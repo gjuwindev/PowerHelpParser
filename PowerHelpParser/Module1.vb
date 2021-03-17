@@ -2,7 +2,7 @@
 
 'Install-Package Microsoft.PowerShell.5.1.ReferenceAssemblies [ -Version 1.0.0 ]
 
-'TODO: get list of all commands:  "Get-Command | Select-Object Name" and process help texts for all that commands...
+'TODO: get list of all commands: "Get-Command | Select-Object Name" and process help texts for all that commands...
 
 Module Module1
 
@@ -11,16 +11,31 @@ Module Module1
         Public Lines As New List(Of String)
     End Class
 
+    Class Parameter
+        Public Name As String
+        Public Type As String
+        Public Description As New List(Of String)
+
+        Public Required As String
+        Public Position As String
+        Public DefaultValue As String
+        Public AcceptPipelineInput As String
+        Public AcceptWildcardCharacters As String
+
+        Public OtherLines As New List(Of String)
+    End Class
+
     Class CommandHelpSections
-        Public Name As HelpSection = Nothing
-        Public Synopsis As HelpSection = Nothing
-        Public Syntax As HelpSection = Nothing
-        Public Description As HelpSection = Nothing
-        Public Parameters As HelpSection = Nothing
-        Public Inputs As HelpSection = Nothing
-        Public Outputs As HelpSection = Nothing
-        Public Notes As HelpSection = Nothing
-        Public RelatedLinks As HelpSection = Nothing
+        Public NameSection As HelpSection = Nothing
+        Public SynopsisSection As HelpSection = Nothing
+        Public SyntaxSection As HelpSection = Nothing
+        Public DescriptionSection As HelpSection = Nothing
+        Public ParametersSection As HelpSection = Nothing
+        Public Parameters As New List(Of Parameter)
+        Public InputsSection As HelpSection = Nothing
+        Public OutputsSection As HelpSection = Nothing
+        Public NotesSection As HelpSection = Nothing
+        Public RelatedLinksSection As HelpSection = Nothing
         Public OtherSections As New List(Of HelpSection)
     End Class
 
@@ -33,6 +48,7 @@ Module Module1
         ParseResultIntoHelpSections(result, helpObject)
         DistibuteSections(helpObject)
         If helpObject.OtherSections.Count > 0 Then Diagnostics.Debugger.Break()
+        AnalyzeParameters(helpObject)
 
         PrintCommandHelpContents(helpObject)
 
@@ -41,29 +57,122 @@ Module Module1
 
     End Sub
 
+    Private Sub AnalyzeParameters(helpObject As CommandHelpSections)
+
+        SeparateParameterTextIntoSeparateSetsOfLines(helpObject)
+
+        Dim trimmedLine As String
+
+        For Each parm In helpObject.Parameters
+            trimmedLine = parm.OtherLines(0).Trim
+            If trimmedLine = "<CommonParameters>" Then
+                parm.Name = trimmedLine
+                parm.Type = "<various>"
+            Else
+                Dim blankPos As Integer = trimmedLine.IndexOf(" ")
+                If blankPos = -1 Then System.Diagnostics.Debugger.Break()
+
+                parm.Name = trimmedLine.Substring(1, blankPos - 1)
+                parm.Type = trimmedLine.Substring(blankPos + 1).TrimStart("<").TrimEnd(">")
+            End If
+
+            parm.OtherLines.RemoveAt(0)
+
+            Dim lineCount As Integer = parm.OtherLines.Count
+
+            For n = lineCount - 1 To 0 Step -1
+                trimmedLine = parm.OtherLines(n).Trim
+                Dim found = True
+                If trimmedLine = "" Then
+                    '
+                ElseIf trimmedLine.StartsWith("Required") Then
+                    parm.Required = trimmedLine.Substring(9).Trim
+                ElseIf trimmedLine.StartsWith("Position") Then
+                    parm.Position = trimmedLine.Substring(9).Trim
+                ElseIf trimmedLine.StartsWith("Default value") Then
+                    parm.DefaultValue = trimmedLine.Substring(13).Trim
+                ElseIf trimmedLine.StartsWith("Accept pipeline input") Then
+                    parm.AcceptPipelineInput = trimmedLine.Substring(22).Trim
+                ElseIf trimmedLine.StartsWith("Accept wildcard characters") Then
+                    parm.AcceptWildcardCharacters = trimmedLine.Substring(27).Trim
+                Else
+                    found = False
+                End If
+
+                If found Then
+                    parm.OtherLines.RemoveAt(n)
+                Else
+                    Exit For
+                End If
+            Next
+
+        Next
+
+    End Sub
+
+    Private Sub SeparateParameterTextIntoSeparateSetsOfLines(helpObject As CommandHelpSections)
+
+        Dim parm As Parameter
+        Dim lineList As List(Of String) = Nothing
+
+        For Each line As String In helpObject.ParametersSection.Lines
+            Dim trimmedLine As String = line.Trim
+            If (trimmedLine.StartsWith("-") AndAlso Not trimmedLine.StartsWith("- ")) OrElse trimmedLine = "<CommonParameters>" Then
+                If lineList IsNot Nothing Then
+                    parm = New Parameter
+                    parm.OtherLines = lineList
+                    helpObject.Parameters.Add(parm)
+                End If
+                parm = New Parameter
+                lineList = New List(Of String)
+                parm.OtherLines = lineList
+                lineList.Add(line)
+            ElseIf lineList Is Nothing Then
+                System.Diagnostics.Debugger.Break()
+            Else
+                lineList.Add(line)
+            End If
+        Next
+
+    End Sub
+
     Sub PrintCommandHelpContents(helpobject As CommandHelpSections)
 
-        Console.WriteLine(helpobject.Name.Name & ": " & helpobject.Name.Lines.Count)
-        Console.WriteLine(helpobject.Synopsis.Name & ": " & helpobject.Synopsis.Lines.Count)
-        Console.WriteLine(helpobject.Syntax.Name & ": " & helpobject.Syntax.Lines.Count)
-        Console.WriteLine(helpobject.Description.Name & ": " & helpobject.Description.Lines.Count)
-        Console.WriteLine(helpobject.Parameters.Name & ": " & helpobject.Parameters.Lines.Count)
-        Console.WriteLine(helpobject.Inputs.Name & ": " & helpobject.Inputs.Lines.Count)
-        Console.WriteLine(helpobject.Outputs.Name & ": " & helpobject.Outputs.Lines.Count)
-        Console.WriteLine(helpobject.Notes.Name & ": " & helpobject.Notes.Lines.Count)
-        Console.WriteLine(helpobject.RelatedLinks.Name & ": " & helpobject.RelatedLinks.Lines.Count)
+        Console.WriteLine(helpobject.NameSection.Name & ":  " & helpobject.NameSection.Lines.Count)
+        Console.WriteLine(helpobject.SynopsisSection.Name & ":  " & helpobject.SynopsisSection.Lines.Count)
+        Console.WriteLine(helpobject.SyntaxSection.Name & ":  " & helpobject.SyntaxSection.Lines.Count)
+        Console.WriteLine(helpobject.DescriptionSection.Name & ":  " & helpobject.DescriptionSection.Lines.Count)
+        Console.WriteLine(helpobject.ParametersSection.Name & ":  " & helpobject.ParametersSection.Lines.Count)
+        PrintParameters(helpobject.Parameters)
+        Console.WriteLine(helpobject.InputsSection.Name & ":  " & helpobject.InputsSection.Lines.Count)
+        Console.WriteLine(helpobject.OutputsSection.Name & ":  " & helpobject.OutputsSection.Lines.Count)
+        Console.WriteLine(helpobject.NotesSection.Name & ":  " & helpobject.NotesSection.Lines.Count)
+        Console.WriteLine(helpobject.RelatedLinksSection.Name & ":  " & helpobject.RelatedLinksSection.Lines.Count)
 
         For Each section In helpobject.OtherSections
-            Console.WriteLine(section.Name & ": " & section.Lines.Count & " lines")
+            Console.WriteLine(section.Name & ":" & section.Lines.Count & " lines")
 
             Dim counter = 0
             For Each line In section.Lines
                 counter += 1
                 If counter > 5 Then Exit For
-                Console.WriteLine("  " & line)
+                Console.WriteLine(" " & line)
             Next
         Next
 
+    End Sub
+
+    Private Sub PrintParameters(parameters As List(Of Parameter))
+
+        For Each parm In parameters
+            Console.WriteLine("   -" & parm.Name & ":  " & parm.Type)
+
+            Console.WriteLine("         Required?                 " & parm.Required)
+            Console.WriteLine("         Position?                 " & parm.Position)
+            Console.WriteLine("         DefaultValue:             " & parm.DefaultValue)
+            Console.WriteLine("         AcceptPipelineInput?      " & parm.AcceptPipelineInput)
+            Console.WriteLine("         AcceptWildcardCharacters? " & parm.AcceptWildcardCharacters)
+        Next
     End Sub
 
     Private Sub DistibuteSections(helpObject As CommandHelpSections)
@@ -75,24 +184,24 @@ Module Module1
             Dim name = section.Name.ToUpper
 
             Dim found As Boolean = True
-            If helpObject.Name Is Nothing AndAlso name = "NAME" Then
-                helpObject.Name = section
-            ElseIf helpObject.Synopsis Is Nothing AndAlso name = "SYNOPSIS" Then
-                helpObject.Synopsis = section
-            ElseIf helpObject.Syntax Is Nothing AndAlso name = "SYNTAX" Then
-                helpObject.Syntax = section
-            ElseIf helpObject.Description Is Nothing AndAlso name = "DESCRIPTION" Then
-                helpObject.Description = section
-            ElseIf helpObject.Parameters Is Nothing AndAlso name = "PARAMETERS" Then
-                helpObject.Parameters = section
-            ElseIf helpObject.Inputs Is Nothing AndAlso name = "INPUTS" Then
-                helpObject.Inputs = section
-            ElseIf helpObject.Outputs Is Nothing AndAlso name = "OUTPUTS" Then
-                helpObject.Outputs = section
-            ElseIf helpObject.Notes Is Nothing AndAlso name = "NOTES" Then
-                helpObject.Notes = section
-            ElseIf helpObject.RelatedLinks Is Nothing AndAlso name = "RELATED LINKS" Then
-                helpObject.RelatedLinks = section
+            If helpObject.NameSection Is Nothing AndAlso name = "NAME" Then
+                helpObject.NameSection = section
+            ElseIf helpObject.SynopsisSection Is Nothing AndAlso name = "SYNOPSIS" Then
+                helpObject.SynopsisSection = section
+            ElseIf helpObject.SyntaxSection Is Nothing AndAlso name = "SYNTAX" Then
+                helpObject.SyntaxSection = section
+            ElseIf helpObject.DescriptionSection Is Nothing AndAlso name = "DESCRIPTION" Then
+                helpObject.DescriptionSection = section
+            ElseIf helpObject.ParametersSection Is Nothing AndAlso name = "PARAMETERS" Then
+                helpObject.ParametersSection = section
+            ElseIf helpObject.InputsSection Is Nothing AndAlso name = "INPUTS" Then
+                helpObject.InputsSection = section
+            ElseIf helpObject.OutputsSection Is Nothing AndAlso name = "OUTPUTS" Then
+                helpObject.OutputsSection = section
+            ElseIf helpObject.NotesSection Is Nothing AndAlso name = "NOTES" Then
+                helpObject.NotesSection = section
+            ElseIf helpObject.RelatedLinksSection Is Nothing AndAlso name = "RELATED LINKS" Then
+                helpObject.RelatedLinksSection = section
             Else
                 found = False
             End If
@@ -106,16 +215,22 @@ Module Module1
 
     Private Sub ParseResultIntoHelpSections(result As String, helpObject As CommandHelpSections)
 
+        ' break help text into lines
         Dim lines() As String = result.Split({vbCrLf}, StringSplitOptions.None)
 
-        Dim sectionLines As New List(Of String)
+        ' lines for one section
+        Dim sectionLines As List(Of String) = Nothing
+        ' one section
         Dim section As HelpSection = Nothing
 
         For Each line In lines
-            If line.Trim = "" OrElse line.StartsWith(" ") Then
+            If line.StartsWith(" ") OrElse line.Trim = "" Then
                 If section Is Nothing Then
                     'Diagnostics.Debugger.Break()
+                ElseIf sectionLines Is Nothing And line.Trim = "" Then
+                    ' ignore leading empty lines
                 Else
+                    If sectionLines Is Nothing Then sectionLines = New List(Of String)
                     sectionLines.Add(line)
                 End If
             Else ' novi naslov sekcije

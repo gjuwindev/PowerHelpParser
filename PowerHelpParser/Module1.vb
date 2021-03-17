@@ -164,14 +164,18 @@ Module Module1
 
     Private Sub PrintParameters(parameters As List(Of Parameter))
 
+        Dim showParameterOptions As Boolean = False
+
         For Each parm In parameters
             Console.WriteLine("   -" & parm.Name & ":  " & parm.Type)
 
-            Console.WriteLine("         Required?                 " & parm.Required)
-            Console.WriteLine("         Position?                 " & parm.Position)
-            Console.WriteLine("         DefaultValue:             " & parm.DefaultValue)
-            Console.WriteLine("         AcceptPipelineInput?      " & parm.AcceptPipelineInput)
-            Console.WriteLine("         AcceptWildcardCharacters? " & parm.AcceptWildcardCharacters)
+            If showParameterOptions Then
+                Console.WriteLine("         Required?                 " & parm.Required)
+                Console.WriteLine("         Position?                 " & parm.Position)
+                Console.WriteLine("         DefaultValue:             " & parm.DefaultValue)
+                Console.WriteLine("         AcceptPipelineInput?      " & parm.AcceptPipelineInput)
+                Console.WriteLine("         AcceptWildcardCharacters? " & parm.AcceptWildcardCharacters)
+            End If
         Next
     End Sub
 
